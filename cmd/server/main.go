@@ -32,9 +32,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	pubsub.PublishJSON(connChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
-		IsPaused: true,
-	})
+	pubsub.PublishJSON(
+		connChan,
+		routing.ExchangePerilDirect,
+		routing.PauseKey,
+		routing.PlayingState{
+			IsPaused: true,
+		},
+	)
 
 	fmt.Println("Shutting down program")
 }
