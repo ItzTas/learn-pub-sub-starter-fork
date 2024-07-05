@@ -14,11 +14,12 @@ import (
 )
 
 func main() {
-	fmt.Println("Starting Peril client...")
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("Starting Peril client...")
 
 	connstr := os.Getenv("CONN_STR")
 

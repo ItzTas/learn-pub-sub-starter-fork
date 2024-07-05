@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	"github.com/joho/godotenv"
@@ -26,20 +27,53 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Sucessfully connected")
+	gamelogic.PrintServerHelp()
 
 	connChan, err := conn.Channel()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pubsub.PublishJSON(
-		connChan,
-		routing.ExchangePerilDirect,
-		routing.PauseKey,
-		routing.PlayingState{
-			IsPaused: true,
-		},
-	)
+	for {
+		input := gamelogic.GetInput()
 
-	fmt.Println("Shutting down program")
+		if len(input) == 0 {
+			continue
+		}
+
+		switch input[0] {
+		case "pause":
+			fmt.Println("sending pause message")
+			err = pubsub.PublishJSON(
+				connChan,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: true,
+				},
+			)
+			if err != nil {
+				log.Printf("could not publish time: %v", err)
+			}
+		case "resume":
+			fmt.Println("sending resume message")
+			err = pubsub.PublishJSON(
+				connChan,
+				routing.ExchangePerilDirect,
+				"pause",
+				routing.PlayingState{
+					IsPaused: false,
+				},
+			)
+			if err != nil {
+				log.Printf("could not publish time: %v", err)
+			}
+		case "quit":
+			log.Println("goodbye")
+			return
+		default:
+			fmt.Println("unkown command")
+		}
+	}
+
 }
