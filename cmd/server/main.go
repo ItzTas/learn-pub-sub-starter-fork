@@ -34,6 +34,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	_, _, err = pubsub.DeclareAndBind(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		"game_logs.*",
+		pubsub.DURABLE,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		input := gamelogic.GetInput()
 
@@ -60,7 +71,7 @@ func main() {
 			err = pubsub.PublishJSON(
 				connChan,
 				routing.ExchangePerilDirect,
-				"pause",
+				routing.PauseKey,
 				routing.PlayingState{
 					IsPaused: false,
 				},

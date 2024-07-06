@@ -7,9 +7,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+type SimpleQueueType int
+
 const (
-	DURABLE   = 0
-	TRANSIENT = 1
+	DURABLE   SimpleQueueType = 0
+	TRANSIENT SimpleQueueType = 1
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
@@ -30,7 +32,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return nil
 }
 
-func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int) (*amqp.Channel, amqp.Queue, error) {
+func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, SimpleQueueType SimpleQueueType) (*amqp.Channel, amqp.Queue, error) {
 	connChan, err := conn.Channel()
 	if err != nil {
 		return nil, amqp.Queue{}, err
@@ -38,9 +40,9 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 
 	queue, err := connChan.QueueDeclare(
 		queueName,
-		simpleQueueType == DURABLE,
-		simpleQueueType == TRANSIENT,
-		simpleQueueType == TRANSIENT,
+		SimpleQueueType == DURABLE,
+		SimpleQueueType == TRANSIENT,
+		SimpleQueueType == TRANSIENT,
 		false,
 		nil,
 	)
@@ -61,4 +63,63 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simp
 	}
 
 	return connChan, queue, nil
+}
+
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T),
+) error {
+	connChan, _, err := DeclareAndBind(
+		conn,
+		exchange,
+		queueName,
+		key,
+		simpleQueueType,
+	)
+	if err != nil {
+		return err
+	}
+
+	delivery, err := connChan.Consume(
+		queueName,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	errChan := make(chan error)
+
+	go func() {
+		for d := range delivery {
+			var t T
+			err := json.Unmarshal(d.Body, &t)
+			if err != nil {
+				errChan <- err
+			}
+
+			handler(t)
+
+			err = d.Ack(false)
+			if err != nil {
+				errChan <- err
+			}
+		}
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	default:
+	}
+	return nil
 }

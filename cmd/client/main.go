@@ -36,6 +36,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	gameState := gamelogic.NewGameState(username)
+
 	_, _, err = pubsub.DeclareAndBind(
 		conn,
 		routing.ExchangePerilDirect,
@@ -46,8 +48,40 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+username,
+		routing.PauseKey,
+		pubsub.TRANSIENT,
+		handlerPause(gameState),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	gameState := gamelogic.NewGameState(username)
+	ArmyMoveQueueName := "army_moves." + username
+	_, _, err = pubsub.DeclareAndBind(
+		conn,
+		routing.ExchangePerilTopic,
+		ArmyMoveQueueName,
+		"army_moves.*",
+		pubsub.TRANSIENT,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		ArmyMoveQueueName,
+		"army_moves.*",
+		pubsub.TRANSIENT,
+		handlerMove(gameState),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for {
 		input := gamelogic.GetInput()
