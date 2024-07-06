@@ -5,6 +5,12 @@ import (
 	"os"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+)
+
+const (
+	ArmyMoves = "army_moves."
 )
 
 type command func(*gamelogic.GameState, CommandsArgs) error
@@ -25,7 +31,18 @@ func handlerCommandSpawn(gamestate *gamelogic.GameState, args CommandsArgs) erro
 }
 
 func handlerCommandMove(gamestate *gamelogic.GameState, args CommandsArgs) error {
-	_, err := gamestate.CommandMove(args.words)
+	move, err := gamestate.CommandMove(args.words)
+	if err != nil {
+		return err
+	}
+
+	err = pubsub.PublishJSON(
+		args.connChan,
+		routing.ExchangePerilTopic,
+		ArmyMoves+args.username,
+		move,
+	)
+
 	return err
 }
 

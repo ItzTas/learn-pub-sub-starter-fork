@@ -1,8 +1,8 @@
 package pubsub
 
 import (
-	"context"
 	"encoding/json"
+	"log"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -10,27 +10,17 @@ import (
 type SimpleQueueType int
 
 const (
-	DURABLE   SimpleQueueType = 0
-	TRANSIENT SimpleQueueType = 1
+	DURABLE SimpleQueueType = iota
+	TRANSIENT
 )
 
-func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
-	dat, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
+type Acktype int
 
-	err = ch.PublishWithContext(context.Background(), exchange, key, false, false, amqp.Publishing{
-		ContentType: "application/json",
-		Body:        dat,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
+)
 
 func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, SimpleQueueType SimpleQueueType) (*amqp.Channel, amqp.Queue, error) {
 	connChan, err := conn.Channel()
@@ -44,7 +34,9 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, Simp
 		SimpleQueueType == TRANSIENT,
 		SimpleQueueType == TRANSIENT,
 		false,
-		nil,
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
 	)
 
 	if err != nil {
@@ -71,7 +63,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType SimpleQueueType,
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 	connChan, _, err := DeclareAndBind(
 		conn,
@@ -107,9 +99,20 @@ func SubscribeJSON[T any](
 				errChan <- err
 			}
 
-			handler(t)
+			Acktype := handler(t)
 
-			err = d.Ack(false)
+			switch Acktype {
+			case Ack:
+				err = d.Ack(false)
+				log.Println("Acked the message")
+			case NackRequeue:
+				err = d.Nack(false, true)
+				log.Println("NACKed the message for requeue")
+			case NackDiscard:
+				err = d.Nack(false, false)
+				log.Println("NACKed the message to discard")
+			}
+
 			if err != nil {
 				errChan <- err
 			}

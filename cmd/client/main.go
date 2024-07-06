@@ -13,7 +13,13 @@ import (
 )
 
 type CommandsArgs struct {
-	words []string
+	words    []string
+	username string
+	connChan *amqp.Channel
+}
+
+type HandlerArgs struct {
+	connChan *amqp.Channel
 }
 
 func main() {
@@ -31,6 +37,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	connChan, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatal(err)
@@ -38,16 +49,10 @@ func main() {
 
 	gameState := gamelogic.NewGameState(username)
 
-	_, _, err = pubsub.DeclareAndBind(
-		conn,
-		routing.ExchangePerilDirect,
-		routing.PauseKey+"."+username,
-		routing.PauseKey,
-		pubsub.TRANSIENT,
-	)
-	if err != nil {
-		log.Fatal(err)
+	handlerArgs := HandlerArgs{
+		connChan: connChan,
 	}
+
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
@@ -60,24 +65,25 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ArmyMoveQueueName := "army_moves." + username
-	_, _, err = pubsub.DeclareAndBind(
+	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilTopic,
-		ArmyMoveQueueName,
-		"army_moves.*",
+		routing.ArmyMovesPrefix+"."+gameState.GetUsername(),
+		routing.ArmyMovesPrefix+".*",
 		pubsub.TRANSIENT,
+		handlerMove(gameState, handlerArgs),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilTopic,
-		ArmyMoveQueueName,
-		"army_moves.*",
-		pubsub.TRANSIENT,
-		handlerMove(gameState),
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.DURABLE,
+		handlerWar(gameState, handlerArgs),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -88,7 +94,9 @@ func main() {
 
 		cmd := input[0]
 		args := CommandsArgs{
-			words: input,
+			words:    input,
+			username: gameState.GetUsername(),
+			connChan: connChan,
 		}
 
 		command, exists := getGameCommands()[cmd]
