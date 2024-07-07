@@ -1,8 +1,10 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -56,8 +58,30 @@ func handlerCommandHelp(_ *gamelogic.GameState, _ CommandsArgs) error {
 	return nil
 }
 
-func handlerCommandSpam(_ *gamelogic.GameState, _ CommandsArgs) error {
-	fmt.Println("Spamming not allowed yet!")
+func handlerCommandSpam(_ *gamelogic.GameState, args CommandsArgs) error {
+	if len(args.words) < 2 {
+		return errors.New("input must have at least 2 words")
+	}
+
+	num, err := strconv.Atoi(args.words[1])
+	if err != nil {
+		return errors.New("must be a valid number")
+	}
+
+	for range num {
+		msg := gamelogic.GetMaliciousLog()
+		pubsub.PublishGob(
+			args.connChan,
+			routing.ExchangePerilTopic,
+			routing.GameLogSlug+"."+args.username,
+			routing.GameLog{
+				CurrentTime: time.Now().UTC(),
+				Message:     msg,
+				Username:    args.username,
+			},
+		)
+	}
+
 	return nil
 }
 

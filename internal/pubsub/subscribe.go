@@ -99,6 +99,11 @@ func SubscribeGob[T any](
 		return err
 	}
 
+	err = connChan.Qos(10, 0, true)
+	if err != nil {
+		return err
+	}
+
 	delivery, err := connChan.Consume(
 		queueName,
 		"",
