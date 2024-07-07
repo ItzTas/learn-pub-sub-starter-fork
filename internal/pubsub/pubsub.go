@@ -1,8 +1,8 @@
 package pubsub
 
 import (
-	"encoding/json"
-	"log"
+	"bytes"
+	"encoding/gob"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -57,72 +57,11 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, Simp
 	return connChan, queue, nil
 }
 
-func SubscribeJSON[T any](
-	conn *amqp.Connection,
-	exchange,
-	queueName,
-	key string,
-	simpleQueueType SimpleQueueType,
-	handler func(T) Acktype,
-) error {
-	connChan, _, err := DeclareAndBind(
-		conn,
-		exchange,
-		queueName,
-		key,
-		simpleQueueType,
-	)
-	if err != nil {
-		return err
-	}
+func DecodeGob[T any](data []byte) (T, error) {
+	buffer := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buffer)
 
-	delivery, err := connChan.Consume(
-		queueName,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-
-	errChan := make(chan error)
-
-	go func() {
-		for d := range delivery {
-			var t T
-			err := json.Unmarshal(d.Body, &t)
-			if err != nil {
-				errChan <- err
-			}
-
-			Acktype := handler(t)
-
-			switch Acktype {
-			case Ack:
-				err = d.Ack(false)
-				log.Println("Acked the message")
-			case NackRequeue:
-				err = d.Nack(false, true)
-				log.Println("NACKed the message for requeue")
-			case NackDiscard:
-				err = d.Nack(false, false)
-				log.Println("NACKed the message to discard")
-			}
-
-			if err != nil {
-				errChan <- err
-			}
-		}
-	}()
-
-	select {
-	case err := <-errChan:
-		return err
-	default:
-	}
-	return nil
+	var t T
+	err := decoder.Decode(&t)
+	return t, err
 }
